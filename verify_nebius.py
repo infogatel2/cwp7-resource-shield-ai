@@ -31,17 +31,25 @@ try:
         model=model,
         messages=[{"role": "user", "content": "Reply with exactly: RESOURCE_SHIELD_OK"}],
         temperature=0,
-        max_tokens=30,
+        max_tokens=128,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
-    text = (response.choices[0].message.content or "").strip()
+    choice = response.choices[0]
+    text = (choice.message.content or "").strip()
     print("Chat-completion authentication: OK")
-    print(f"Provider reply: {text}")
+    print(f"Finish reason: {choice.finish_reason}")
+    print(f"Provider reply: {text or '[empty]'}")
+    if text != "RESOURCE_SHIELD_OK":
+        print("Warning: authentication works, but the provider did not return the exact expected test string.")
+        raise SystemExit(4)
 except AuthenticationError as exc:
     print("Chat/provider authentication failed with HTTP 401.")
     print("The key reached Nebius, but inference authentication was rejected.")
     print("Create a fresh Token Factory API key in the same project, replace NEBIUS_API_KEY in .env, and retry.")
     print(f"Provider message: {exc}")
     raise SystemExit(2)
+except SystemExit:
+    raise
 except Exception as exc:
     print(f"Provider check failed: {type(exc).__name__}: {exc}")
     raise SystemExit(3)
