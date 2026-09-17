@@ -1,0 +1,22 @@
+{
+  "incident_id": "demo-2026-09-17-001",
+  "observed_at": "2026-09-17T12:30:00+00:00",
+  "server": "cwp7-demo-node-a",
+  "domain": "shop.example.com",
+  "scope": "subnet",
+  "subject": "104.234.53.0/24",
+  "reason": "coordinated_sensitive_path_flood",
+  "requests": 684,
+  "sensitive_requests": 255,
+  "distinct_ips": 52,
+  "action": "cloudflare_account_block",
+  "php_fpm_pressure": "high",
+  "server_load_1m": 3.74,
+  "server_load_5m": 3.77,
+  "memory_used_gb": 4.12,
+  "cloudflare_scope": "account_wide",
+  "context": {
+    "targeted_paths": ["/wp-admin/", "/wp-login.php", "/wp-cron.php"],
+    "demo_note": "Anonymized incident shaped like a real coordinated WordPress attack."
+  }
+}
