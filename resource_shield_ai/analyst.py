@@ -13,9 +13,13 @@ SYSTEM_PROMPT = """You are Resource Shield AI Security Analyst, a defensive cybe
 You receive structured incident telemetry produced by a server-side detection engine. Your job is to explain the evidence, assess severity, and recommend safe defensive actions.
 
 Rules:
-- Treat telemetry as evidence, not certainty. Do not invent reputation data, CVEs, attribution, geolocation, ASN ownership, malware families, or attacker identity.
+- Treat telemetry as evidence, not certainty. Do not invent reputation data, CVEs, attribution, geolocation, ASN ownership, malware families, attacker identity, or compromise status.
+- Do not describe activity as brute force, credential guessing, successful/failed login attempts, exploitation, compromise, or breach unless the telemetry explicitly contains authentication or integrity evidence supporting that statement.
+- Never claim that no breach or compromise occurred unless the telemetry explicitly contains a completed verification establishing that. If compromise status is unknown, say that the supplied telemetry does not establish whether compromise occurred.
 - Do not recommend offensive, retaliatory, destructive, persistence, credential theft, exploitation, or scanning actions.
 - Prefer reversible defensive actions: edge blocks, rate limiting, log review, PHP-FPM tuning checks, WordPress hardening, Cgroups review, credential review, backups, and monitoring.
+- Do not present URL hiding/renaming as a primary security control. Prefer authentication hardening, 2FA, rate limiting, WAF controls, least privilege, patching, and evidence review.
+- Severity must reflect both traffic evidence and operational impact. A coordinated subnet event with at least 20 distinct IPs, at least 100 sensitive-path requests, and high/severe PHP-FPM pressure should normally be at least HIGH unless the telemetry contains a clear benign explanation. Reserve CRITICAL for stronger evidence such as severe sustained service impact or confirmed compromise.
 - If the evidence is insufficient, say so explicitly.
 - Return ONLY valid JSON matching this schema exactly:
 {
@@ -96,6 +100,7 @@ def analyze_incident(incident: Incident, mode: AnalysisMode = "standard") -> Ana
             "Nemotron returned an empty final answer. Retry once; if it repeats, use a larger max_tokens budget or another configured Nemotron mode."
         )
     obj = _extract_json(content)
+    obj = _apply_evidence_guardrails(obj, incident)
     obj["model"] = model
     obj["provider"] = f"Nebius Token Factory • {mode.title()}"
     return Analysis.model_validate(obj)
@@ -139,6 +144,59 @@ def _extract_json(text: str) -> dict:
         return json.loads(match.group(0))
 
 
+def _apply_evidence_guardrails(obj: dict, incident: Incident) -> dict:
+    """Apply deterministic safety/evidence rules after the model response.
+
+    Detection remains deterministic and the LLM is advisory. This post-processing
+    prevents unsupported reassurance and keeps severity aligned with measured impact.
+    """
+    guarded = dict(obj)
+    context = {str(k).lower(): v for k, v in (incident.context or {}).items()}
+
+    explicit_compromise_verification = any(
+        key in context
+        for key in {
+            "breach_verified",
+            "breach_status",
+            "compromise_verified",
+            "compromise_status",
+            "integrity_check_result",
+        }
+    )
+
+    if not explicit_compromise_verification:
+        for field in ("summary", "operator_note", "customer_safe_report"):
+            value = str(guarded.get(field, ""))
+            value = re.sub(
+                r"\bno evidence of (?:a )?(?:breach|compromise) (?:was|has been) found\.?",
+                "The supplied telemetry does not establish whether compromise occurred.",
+                value,
+                flags=re.IGNORECASE,
+            )
+            value = re.sub(
+                r"\b(?:no breach|no compromise) (?:was|has been) detected\.?",
+                "The supplied telemetry does not establish whether compromise occurred.",
+                value,
+                flags=re.IGNORECASE,
+            )
+            guarded[field] = value
+
+    pressure = (incident.php_fpm_pressure or "").strip().lower()
+    coordinated_high_impact = (
+        incident.scope == "subnet"
+        and incident.distinct_ips >= 20
+        and incident.sensitive_requests >= 100
+        and pressure in {"high", "critical", "severe"}
+    )
+    if coordinated_high_impact:
+        severity_order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+        current = str(guarded.get("severity", "medium")).lower()
+        if severity_order.get(current, 1) < severity_order["high"]:
+            guarded["severity"] = "high"
+
+    return guarded
+
+
 def demo_analysis(incident: Incident, model: str = "demo-fallback") -> Analysis:
     ratio = (incident.sensitive_requests / incident.requests) if incident.requests else 0
     severity = "high" if incident.scope == "subnet" and incident.distinct_ips >= 12 else "medium"
@@ -169,7 +227,7 @@ def demo_analysis(incident: Incident, model: str = "demo-fallback") -> Analysis:
             "Continue monitoring for recurrence from adjacent networks before broadening any block.",
         ],
         operator_note="This is a demonstration fallback. Configure NEBIUS_API_KEY to generate the contest-qualified Nemotron analysis at runtime.",
-        customer_safe_report="A coordinated burst of suspicious traffic was detected and contained before it could continue consuming application resources. Monitoring remains active.",
+        customer_safe_report="A coordinated burst of suspicious traffic was detected and contained before it could continue consuming application resources. Monitoring remains active. The supplied telemetry does not establish whether compromise occurred.",
         model=model,
         provider="Local demo fallback",
     )
