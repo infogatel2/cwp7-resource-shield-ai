@@ -86,10 +86,15 @@ def analyze_incident(incident: Incident, mode: AnalysisMode = "standard") -> Ana
             },
         ],
         temperature=0.10 if mode == "deep" else 0.15,
-        max_tokens=1900 if mode == "deep" else (1200 if mode == "triage" else 1500),
+        max_tokens=2200 if mode == "deep" else (1200 if mode == "triage" else 1700),
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
 
     content = response.choices[0].message.content or ""
+    if not content.strip():
+        raise ValueError(
+            "Nemotron returned an empty final answer. Retry once; if it repeats, use a larger max_tokens budget or another configured Nemotron mode."
+        )
     obj = _extract_json(content)
     obj["model"] = model
     obj["provider"] = f"Nebius Token Factory • {mode.title()}"
