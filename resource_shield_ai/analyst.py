@@ -16,6 +16,8 @@ Rules:
 - Treat telemetry as evidence, not certainty. Do not invent reputation data, CVEs, attribution, geolocation, ASN ownership, malware families, attacker identity, or compromise status.
 - Do not describe activity as brute force, credential guessing, successful/failed login attempts, exploitation, compromise, or breach unless the telemetry explicitly contains authentication or integrity evidence supporting that statement.
 - Never claim that no breach or compromise occurred unless the telemetry explicitly contains a completed verification establishing that. If compromise status is unknown, say that the supplied telemetry does not establish whether compromise occurred.
+- Do not infer memory pressure, capacity exhaustion, or VM/server size from memory_used_gb alone. Only make a memory-pressure claim when the telemetry provides total memory, a utilization percentage, an explicit memory-pressure signal, or equivalent capacity context.
+- Do not call an event sustained or long-running unless the telemetry contains a duration or observation-window value that supports that statement.
 - Do not recommend offensive, retaliatory, destructive, persistence, credential theft, exploitation, or scanning actions.
 - Prefer reversible defensive actions: edge blocks, rate limiting, log review, PHP-FPM tuning checks, WordPress hardening, Cgroups review, credential review, backups, and monitoring.
 - Do not present URL hiding/renaming as a primary security control. Prefer authentication hardening, 2FA, rate limiting, WAF controls, least privilege, patching, and evidence review.
@@ -180,6 +182,29 @@ def _apply_evidence_guardrails(obj: dict, incident: Incident) -> dict:
                 flags=re.IGNORECASE,
             )
             guarded[field] = value
+
+    memory_capacity_context = any(
+        key in context
+        for key in {
+            "memory_total_gb",
+            "memory_usage_percent",
+            "memory_pressure",
+            "ram_total_gb",
+            "ram_usage_percent",
+        }
+    )
+    if not memory_capacity_context:
+        guarded["why_flagged"] = [
+            item
+            for item in guarded.get("why_flagged", [])
+            if not (
+                "memory" in str(item).lower()
+                and any(
+                    word in str(item).lower()
+                    for word in ("pressure", "strain", "capacity", "exhaust", "high", "percent", "%")
+                )
+            )
+        ]
 
     pressure = (incident.php_fpm_pressure or "").strip().lower()
     coordinated_high_impact = (
