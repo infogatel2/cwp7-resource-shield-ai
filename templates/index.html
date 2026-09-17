@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CWP7 Resource Shield AI</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <div class="eyebrow">NEBIUS x NVIDIA HACKATHON EDITION</div>
+        <h1>CWP7 Resource Shield <span>AI</span></h1>
+        <p>AI-assisted incident analysis for server-level attack detection and Cloudflare protection.</p>
+      </div>
+      <div class="status-card">
+        <div class="dot {{ 'live' if live_ai else 'demo' }}"></div>
+        <div><strong>{{ 'LIVE NEMOTRON' if live_ai else 'DEMO FALLBACK' }}</strong><small>{{ model }}</small></div>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="panel">
+        <div class="panel-title"><span>01</span> Detection Evidence</div>
+        <div class="kv"><b>Server</b><code>{{ incident.server }}</code></div>
+        <div class="kv"><b>Domain</b><code>{{ incident.domain }}</code></div>
+        <div class="kv"><b>Source</b><code>{{ incident.subject }}</code></div>
+        <div class="kv"><b>Reason</b><code>{{ incident.reason }}</code></div>
+        <div class="metrics">
+          <div><strong>{{ incident.requests }}</strong><span>Requests</span></div>
+          <div><strong>{{ incident.sensitive_requests }}</strong><span>Sensitive</span></div>
+          <div><strong>{{ incident.distinct_ips }}</strong><span>Distinct IPs</span></div>
+        </div>
+        <label class="mode-label" for="analysisMode">AI analysis depth</label>
+        <select id="analysisMode" class="mode-select">
+          <option value="triage">Fast Triage — Nemotron Nano</option>
+          <option value="standard" selected>Standard Analyst — Nemotron Super</option>
+          <option value="deep">Deep Investigation — Nemotron Ultra</option>
+        </select>
+        <button id="analyzeBtn">Analyze Incident with AI</button>
+        <p class="hint">Runtime path: Resource Shield telemetry → Nebius Token Factory → NVIDIA Nemotron → defensive recommendation.</p>
+      </article>
+
+      <article class="panel analyst">
+        <div class="panel-title"><span>02</span> AI Security Analyst</div>
+        <div id="emptyState" class="empty">
+          <div class="shield">⬡</div>
+          <h2>Ready to investigate</h2>
+          <p>Run the analysis to turn raw security telemetry into an operator-ready explanation.</p>
+        </div>
+        <div id="result" class="result hidden">
+          <div class="severity-row"><span id="severity" class="badge"></span><span id="confidence"></span></div>
+          <h2 id="summary"></h2>
+          <p id="pattern" class="pattern"></p>
+          <h3>Why it was flagged</h3><ul id="why"></ul>
+          <h3>Recommended actions</h3><ol id="actions"></ol>
+          <div class="report"><strong>Customer-safe report</strong><p id="customerReport"></p></div>
+          <div class="model-line" id="modelLine"></div>
+        </div>
+      </article>
+    </section>
+
+    <section class="flow">
+      <div>Resource Shield Detection</div><b>→</b><div>Structured Incident</div><b>→</b><div>Nebius Token Factory</div><b>→</b><div>NVIDIA Nemotron</div><b>→</b><div>Human-Readable Defense</div>
+    </section>
+
+    <footer>Open-source hackathon demonstration edition • Commercial Resource Shield engine remains separate</footer>
+  </main>
+<script>
+const incident = {{ incident | tojson }};
+const btn = document.getElementById('analyzeBtn');
+const empty = document.getElementById('emptyState');
+const result = document.getElementById('result');
+const analysisMode = document.getElementById('analysisMode');
+btn.addEventListener('click', async () => {
+  btn.disabled = true; btn.textContent = 'Analyzing telemetry…';
+  try {
+    const mode = analysisMode.value;
+    const res = await fetch(`/api/analyze?mode=${encodeURIComponent(mode)}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(incident)});
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Analysis failed');
+    empty.classList.add('hidden'); result.classList.remove('hidden');
+    const sev = document.getElementById('severity');
+    sev.textContent = data.severity.toUpperCase(); sev.className = 'badge ' + data.severity;
+    document.getElementById('confidence').textContent = `Confidence ${(data.confidence*100).toFixed(0)}%`;
+    document.getElementById('summary').textContent = data.summary;
+    document.getElementById('pattern').textContent = data.attack_pattern;
+    document.getElementById('why').innerHTML = data.why_flagged.map(x=>`<li>${escapeHtml(x)}</li>`).join('');
+    document.getElementById('actions').innerHTML = data.recommended_actions.map(x=>`<li>${escapeHtml(x)}</li>`).join('');
+    document.getElementById('customerReport').textContent = data.customer_safe_report;
+    document.getElementById('modelLine').textContent = `${data.provider} • ${data.model}`;
+  } catch (e) { alert(e.message); }
+  finally { btn.disabled = false; btn.textContent = 'Analyze Incident with AI'; }
+});
+function escapeHtml(s){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+</script>
+</body>
+</html>
